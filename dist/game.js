@@ -177,8 +177,25 @@ function makeFlower(color) {
   return group;
 }
 
-// ring of trees just outside the play field
-const treeCount = 16;
+// obstacles the bear and slimes must walk around, in "pos space" (x, worldZ)
+const treeObstacles = [];
+function pushOutOfTrees(pos, bodyRadius) {
+  for (const obs of treeObstacles) {
+    const dx = pos.x - obs.pos.x;
+    const dz = pos.y - obs.pos.y;
+    const distSq = dx * dx + dz * dz;
+    const minDist = obs.radius + bodyRadius;
+    if (distSq < minDist * minDist && distSq > 0.0001) {
+      const dist = Math.sqrt(distSq);
+      const push = minDist - dist;
+      pos.x += (dx / dist) * push;
+      pos.y += (dz / dist) * push;
+    }
+  }
+}
+
+// backdrop tree line just outside the play field (no collision, purely scenic)
+const treeCount = 14;
 for (let i = 0; i < treeCount; i++) {
   const a = (i / treeCount) * Math.PI * 2 + Math.random() * 0.15;
   const d = ARENA_RADIUS + 2.4 + Math.random() * 1.8;
@@ -188,11 +205,31 @@ for (let i = 0; i < treeCount; i++) {
   scene.add(tree);
 }
 
-// flower clusters scattered near the field edge, out of the way of play
+// trees scattered INSIDE the field itself — real obstacles to walk around
+const innerTreeCount = 8;
+for (let i = 0; i < innerTreeCount; i++) {
+  let x, z;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const a = Math.random() * Math.PI * 2;
+    const d = 3 + Math.random() * (ARENA_RADIUS - 4.5);
+    x = Math.cos(a) * d;
+    z = Math.sin(a) * d;
+    if (Math.hypot(x, z - 3.5) > 2.5) break; // keep the bear's start spot clear
+  }
+  const tree = makeTree();
+  const scale = 0.8 + Math.random() * 0.35;
+  tree.scale.setScalar(scale);
+  tree.position.set(x, 0, z);
+  tree.rotation.y = Math.random() * Math.PI * 2;
+  scene.add(tree);
+  treeObstacles.push({ pos: new THREE.Vector2(x, z), radius: 0.32 * scale });
+}
+
+// flower clusters scattered through the field, decorative (walk-over, no collision)
 const flowerColors = [0xff8fb3, 0xffe066, 0xffffff, 0xb28dff, 0xff9f6b];
 for (let c = 0; c < 10; c++) {
   const a = Math.random() * Math.PI * 2;
-  const d = ARENA_RADIUS - 1.5 + Math.random() * 3.2;
+  const d = Math.random() * (ARENA_RADIUS - 1.2);
   const clusterX = Math.cos(a) * d;
   const clusterZ = Math.sin(a) * d;
   const clusterSize = 2 + Math.floor(Math.random() * 3);
@@ -583,9 +620,14 @@ function updateBear(dt) {
     bearState.pos.x += mx * progress.moveSpeed * dt;
     bearState.pos.y += my * progress.moveSpeed * dt;
     // face the exact movement direction immediately (full 360°, no lag/moonwalk)
-    bearState.facing = Math.atan2(mx, -my);
+    // pos.y maps to world Z, and the model's local forward (+Z) becomes
+    // world (sin(facing), cos(facing)) after rotation.y — so facing must be
+    // atan2(mx, my), matching the movement vector exactly (not atan2(mx, -my)).
+    bearState.facing = Math.atan2(mx, my);
     bearState.walkT += dt * 9;
   }
+
+  pushOutOfTrees(bearState.pos, 0.5);
 
   const distFromCenter = bearState.pos.length();
   if (distFromCenter > ARENA_RADIUS) {
@@ -656,7 +698,7 @@ function updateBear(dt) {
 }
 
 function resolveAttackHit() {
-  const forward = new THREE.Vector2(Math.sin(bearState.facing), -Math.cos(bearState.facing));
+  const forward = new THREE.Vector2(Math.sin(bearState.facing), Math.cos(bearState.facing));
   const hitCenter = bearState.pos.clone().add(forward.clone().multiplyScalar(0.6));
   let hitAny = false;
   for (const s of slimes) {
@@ -742,6 +784,8 @@ function updateSlimes(dt) {
       s.pos.x += Math.cos(s.hopDir) * speed * dt;
       s.pos.y += Math.sin(s.hopDir) * speed * dt;
     }
+    pushOutOfTrees(s.pos, 0.4);
+
     const distFromCenter = s.pos.length();
     if (distFromCenter > ARENA_RADIUS - 0.5) {
       s.pos.multiplyScalar((ARENA_RADIUS - 0.5) / distFromCenter);
