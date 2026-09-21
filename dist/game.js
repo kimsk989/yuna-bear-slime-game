@@ -1,39 +1,44 @@
 import * as THREE from "three";
+import { BgMusic } from "./music.js";
 
 const SLIME_MAX_HP = 3;
-const SLIME_COUNT = 4;
-const WIN_TARGET = 8;
+const SLIME_COUNT_BASE = 4;
+const SLIME_COUNT_MAX = 8;
 const ATTACK_RANGE = 2.4;
 const BASE_ATTACK_DURATION = 0.45;
 const BASE_ATTACK_COOLDOWN = 0.15;
 const BASE_MOVE_SPEED = 4.5;
-const ARENA_RADIUS = 9;
+const ARENA_RADIUS = 10.5;
 
-const MAX_LEVEL = 10;
-// xp required to go from level i -> i+1 (index 0 = lv1->2 ... index 8 = lv9->10)
-// lv1-5: quick jumps, lv6-10: slower climb
-const XP_THRESHOLDS = [2, 2, 3, 3, 4, 6, 7, 8, 9];
+const MAX_LEVEL = 20;
+// xp required to go from level i -> i+1 (index 0 = lv1->2 ... index 18 = lv19->20)
+// lv1-5: quick jumps so early play feels rewarding, lv6-20: slow steady climb
+const XP_THRESHOLDS = [2, 2, 3, 3, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11];
 
 const SLIME_PALETTE = [0x5ad0e0, 0xff8fd0, 0x9dff7a, 0xffe066, 0xb28dff];
 const MOVE_STYLES = ["chase", "wander", "circle", "zigzag"];
 
 const canvas = document.getElementById("game-canvas");
 const startScreen = document.getElementById("start-screen");
-const winScreen = document.getElementById("win-screen");
-const winTitle = winScreen.querySelector("h2");
 const hud = document.getElementById("hud");
 const scoreNum = document.getElementById("score-num");
 const levelNum = document.getElementById("level-num");
 const xpFill = document.getElementById("xp-bar-fill");
 const levelUpToast = document.getElementById("level-up-toast");
+const musicBtn = document.getElementById("music-btn");
 const mobileControls = document.getElementById("mobile-controls");
 const joystickZone = document.getElementById("joystick-zone");
 const joystickKnob = document.getElementById("joystick-knob");
 const attackBtn = document.getElementById("attack-btn");
 const startBtn = document.getElementById("start-btn");
-const restartBtn = document.getElementById("restart-btn");
 
 let score = 0;
+
+const bgMusic = new BgMusic();
+musicBtn.addEventListener("click", () => {
+  const on = bgMusic.toggle();
+  musicBtn.textContent = on ? "🔊" : "🔇";
+});
 
 const progress = {
   level: 1,
@@ -42,15 +47,22 @@ const progress = {
   moveSpeed: BASE_MOVE_SPEED,
   attackDuration: BASE_ATTACK_DURATION,
   attackCooldown: BASE_ATTACK_COOLDOWN,
+  slimeSpeedMult: 1,
+  slimeTarget: SLIME_COUNT_BASE,
 };
 
 function applyLevelStats() {
-  // +5% move speed and ~+7% attack speed per level, capped at MAX_LEVEL
-  const speedMult = 1 + (progress.level - 1) * 0.05;
-  const atkMult = 1 + (progress.level - 1) * 0.07;
+  // steady scaling per level so a 20-level climb stays noticeably harder and faster throughout
+  const speedMult = 1 + (progress.level - 1) * 0.035;
+  const atkMult = 1 + (progress.level - 1) * 0.045;
   progress.moveSpeed = BASE_MOVE_SPEED * speedMult;
   progress.attackDuration = BASE_ATTACK_DURATION / atkMult;
   progress.attackCooldown = BASE_ATTACK_COOLDOWN / atkMult;
+  progress.slimeSpeedMult = 1 + (progress.level - 1) * 0.03;
+  progress.slimeTarget = Math.min(
+    SLIME_COUNT_MAX,
+    SLIME_COUNT_BASE + Math.floor((progress.level - 1) / 5)
+  );
 }
 applyLevelStats();
 
@@ -64,10 +76,17 @@ function gainXp(amount) {
     progress.xpToNext = XP_THRESHOLDS[progress.level - 1] || 999;
     applyLevelStats();
     levelNum.textContent = String(progress.level);
-    levelUpToast.textContent = `레벨업! Lv.${progress.level} 🌟`;
+    const maxedOut = progress.level >= MAX_LEVEL;
+    levelUpToast.textContent = maxedOut
+      ? `레벨 ${progress.level} 달성! 진짜 슬라임 마스터예요! 🏆`
+      : `레벨업! Lv.${progress.level} 🌟`;
     levelUpToast.classList.add("show");
     clearTimeout(levelUpToastTimer);
-    levelUpToastTimer = setTimeout(() => levelUpToast.classList.remove("show"), 1200);
+    levelUpToastTimer = setTimeout(
+      () => levelUpToast.classList.remove("show"),
+      maxedOut ? 2600 : 1200
+    );
+    growSlimesToTarget();
   }
   levelNum.textContent = String(progress.level);
   const ratio = progress.level >= MAX_LEVEL ? 1 : progress.xp / progress.xpToNext;
@@ -436,6 +455,12 @@ function spawnSlime() {
 
 let slimes = [];
 
+function growSlimesToTarget() {
+  while (slimes.length < progress.slimeTarget) {
+    slimes.push(spawnSlime());
+  }
+}
+
 const hitSparks = [];
 function spawnHitSpark(x, z) {
   const ring = new THREE.Mesh(
@@ -557,10 +582,8 @@ function updateBear(dt) {
     my /= len || 1;
     bearState.pos.x += mx * progress.moveSpeed * dt;
     bearState.pos.y += my * progress.moveSpeed * dt;
-    const targetFacing = Math.atan2(mx, -my);
-    let diff = targetFacing - bearState.facing;
-    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    bearState.facing += diff * Math.min(1, dt * 10);
+    // face the exact movement direction immediately (full 360°, no lag/moonwalk)
+    bearState.facing = Math.atan2(mx, -my);
     bearState.walkT += dt * 9;
   }
 
@@ -655,9 +678,6 @@ function resolveAttackHit() {
         score += 1;
         scoreNum.textContent = String(score);
         gainXp(1);
-        if (score >= WIN_TARGET) {
-          setTimeout(() => running && showWin(), 350);
-        }
       }
     }
   }
@@ -717,7 +737,7 @@ function updateSlimes(dt) {
     s.hopT += dt * 2.2;
     s.wobbleT += dt * 3;
     const hop = Math.max(0, Math.sin(s.hopT));
-    const speed = updateSlimeDirection(s, dt);
+    const speed = updateSlimeDirection(s, dt) * progress.slimeSpeedMult;
     if (Math.sin(s.hopT) > 0) {
       s.pos.x += Math.cos(s.hopDir) * speed * dt;
       s.pos.y += Math.sin(s.hopDir) * speed * dt;
@@ -817,14 +837,6 @@ function tick(now) {
 }
 requestAnimationFrame(tick);
 
-function showWin() {
-  running = false;
-  winTitle.textContent = `슬라임 ${score}마리를 물리쳤어요! 🎉`;
-  winScreen.classList.remove("hidden");
-  hud.classList.add("hidden");
-  mobileControls.classList.add("hidden");
-}
-
 function clearSlimes() {
   for (const s of slimes) {
     if (!s.dead) scene.remove(s.mesh);
@@ -849,15 +861,14 @@ function startGame() {
   cameraBase.set(0, 6.5, 10);
 
   clearSlimes();
-  for (let i = 0; i < SLIME_COUNT; i++) slimes.push(spawnSlime());
+  growSlimesToTarget();
 
   startScreen.classList.add("hidden");
-  winScreen.classList.add("hidden");
   hud.classList.remove("hidden");
   mobileControls.classList.remove("hidden");
   running = true;
   lastTime = performance.now();
+  bgMusic.start();
 }
 
 startBtn.addEventListener("click", startGame);
-restartBtn.addEventListener("click", startGame);

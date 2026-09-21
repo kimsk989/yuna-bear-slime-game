@@ -19,7 +19,7 @@ html, body {
 
 .hidden { display: none !important; }
 
-#start-screen, #win-screen {
+#start-screen {
   position: fixed;
   inset: 0;
   z-index: 20;
@@ -33,7 +33,7 @@ html, body {
   padding: 24px;
 }
 
-#start-screen h1, #win-screen h2 {
+#start-screen h1 {
   margin: 0;
   color: #6b4a2b;
   font-size: 28px;
@@ -45,7 +45,7 @@ html, body {
   font-size: 16px;
 }
 
-#start-btn, #restart-btn {
+#start-btn {
   padding: 14px 32px;
   font-size: 18px;
   font-weight: bold;
@@ -57,7 +57,7 @@ html, body {
   cursor: pointer;
 }
 
-#start-btn:active, #restart-btn:active {
+#start-btn:active {
   transform: translateY(2px);
   box-shadow: 0 2px 0 #cc7e2f;
 }
@@ -74,13 +74,6 @@ html, body {
   pointer-events: none;
 }
 
-#hp-bar-wrap {
-  background: rgba(255,255,255,0.85);
-  border-radius: 12px;
-  padding: 8px 12px;
-  min-width: 180px;
-}
-
 .hud-label {
   display: block;
   font-size: 12px;
@@ -88,19 +81,26 @@ html, body {
   margin-bottom: 4px;
 }
 
-#hp-bar-bg {
-  width: 100%;
-  height: 14px;
-  background: #ddd;
-  border-radius: 999px;
-  overflow: hidden;
+#hud-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
 }
 
-#hp-bar-fill {
-  height: 100%;
-  width: 100%;
-  background: #6bd46b;
-  transition: width 0.15s ease-out;
+#music-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.85);
+  font-size: 17px;
+  cursor: pointer;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.1);
+}
+
+#music-btn:active {
+  transform: translateY(1px);
 }
 
 #score {
