@@ -20,6 +20,88 @@ export class BgMusic {
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = 0.16;
     this.masterGain.connect(this.ctx.destination);
+    this.sfxGain = this.ctx.createGain();
+    this.sfxGain.gain.value = 0.5;
+    this.sfxGain.connect(this.ctx.destination);
+  }
+
+  resumeIfNeeded() {
+    this.ensureCtx();
+    if (this.ctx.state === "suspended") this.ctx.resume();
+  }
+
+  // short percussive "thwack" for a landed hit
+  playHit() {
+    this.resumeIfNeeded();
+    const t = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(480, t);
+    osc.frequency.exponentialRampToValueAtTime(160, t + 0.09);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.13);
+
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.08);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+    const noiseFilter = this.ctx.createBiquadFilter();
+    noiseFilter.type = "bandpass";
+    noiseFilter.frequency.value = 1000;
+    const noiseGain = this.ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.22, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(this.sfxGain);
+    noise.start(t);
+  }
+
+  // cute rising-then-falling "poof" when a slime is defeated
+  playDefeat() {
+    this.resumeIfNeeded();
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(300, t);
+    osc.frequency.exponentialRampToValueAtTime(760, t + 0.12);
+    osc.frequency.exponentialRampToValueAtTime(140, t + 0.3);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.34);
+  }
+
+  // short ascending jingle for level-up
+  playLevelUp() {
+    this.resumeIfNeeded();
+    const t = this.ctx.currentTime;
+    const freqs = [523.25, 659.25, 783.99, 1046.5];
+    freqs.forEach((f, i) => {
+      const start = t + i * 0.09;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.value = f;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.32, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.22);
+      osc.connect(gain);
+      gain.connect(this.sfxGain);
+      osc.start(start);
+      osc.stop(start + 0.24);
+    });
   }
 
   playNote(freq, time) {

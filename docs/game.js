@@ -86,6 +86,7 @@ function gainXp(amount) {
       () => levelUpToast.classList.remove("show"),
       maxedOut ? 2600 : 1200
     );
+    bgMusic.playLevelUp();
     growSlimesToTarget();
   }
   levelNum.textContent = String(progress.level);
@@ -95,6 +96,11 @@ function gainXp(amount) {
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xbfe8ff);
@@ -103,26 +109,42 @@ scene.fog = new THREE.Fog(0xbfe8ff, 18, 32);
 const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
 const cameraBase = new THREE.Vector3();
 
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0x88aa66, 1.0);
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x88aa66, 0.85);
 scene.add(hemiLight);
-const sunLight = new THREE.DirectionalLight(0xffffff, 1.1);
-sunLight.position.set(6, 10, 4);
+const sunLight = new THREE.DirectionalLight(0xfff3d9, 1.25);
+sunLight.position.set(6, 11, 4);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(1536, 1536);
+sunLight.shadow.camera.left = -(ARENA_RADIUS + 3);
+sunLight.shadow.camera.right = ARENA_RADIUS + 3;
+sunLight.shadow.camera.top = ARENA_RADIUS + 3;
+sunLight.shadow.camera.bottom = -(ARENA_RADIUS + 3);
+sunLight.shadow.camera.near = 2;
+sunLight.shadow.camera.far = 26;
+sunLight.shadow.bias = -0.0025;
+sunLight.shadow.normalBias = 0.02;
 scene.add(sunLight);
+// gentle cool fill light from the opposite side so shadowed faces aren't pitch black
+const fillLight = new THREE.DirectionalLight(0xbfe0ff, 0.35);
+fillLight.position.set(-5, 6, -6);
+scene.add(fillLight);
 
 // ground
 const ground = new THREE.Mesh(
   new THREE.CircleGeometry(ARENA_RADIUS + 2, 48),
-  new THREE.MeshStandardMaterial({ color: 0x9fe07a })
+  new THREE.MeshStandardMaterial({ color: 0x9fe07a, roughness: 0.95 })
 );
 ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
 scene.add(ground);
 
 const ringEdge = new THREE.Mesh(
   new THREE.RingGeometry(ARENA_RADIUS + 1.6, ARENA_RADIUS + 2, 48),
-  new THREE.MeshStandardMaterial({ color: 0x7bc95f })
+  new THREE.MeshStandardMaterial({ color: 0x7bc95f, roughness: 0.95 })
 );
 ringEdge.rotation.x = -Math.PI / 2;
 ringEdge.position.y = 0.01;
+ringEdge.receiveShadow = true;
 scene.add(ringEdge);
 
 // --- scenery: trees ---
@@ -131,19 +153,23 @@ function makeTree() {
   const trunkH = 1.1 + Math.random() * 0.5;
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.11, 0.16, trunkH, 8),
-    new THREE.MeshStandardMaterial({ color: 0x8a5a34 })
+    new THREE.MeshStandardMaterial({ color: 0x8a5a34, roughness: 0.9 })
   );
   trunk.position.y = trunkH / 2;
+  trunk.castShadow = true;
+  trunk.receiveShadow = true;
   group.add(trunk);
 
   const leafColor = [0x5fbf4f, 0x6fce5a, 0x4fae46][Math.floor(Math.random() * 3)];
-  const leafMat = new THREE.MeshStandardMaterial({ color: leafColor });
+  const leafMat = new THREE.MeshStandardMaterial({ color: leafColor, roughness: 0.85 });
   const tiers = 2 + Math.floor(Math.random() * 2);
   for (let i = 0; i < tiers; i++) {
     const r = 0.62 - i * 0.13;
     const leaf = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), leafMat);
     leaf.position.y = trunkH + i * 0.42;
     leaf.scale.set(1, 0.85, 1);
+    leaf.castShadow = true;
+    leaf.receiveShadow = true;
     group.add(leaf);
   }
   const scale = 0.8 + Math.random() * 0.5;
@@ -344,6 +370,9 @@ function makeBear() {
   bodyPivot.add(legPivotR);
 
   root.userData = { bodyPivot, headPivot, armPivotL, armPivotR, legPivotL, legPivotR };
+  root.traverse((o) => {
+    if (o.isMesh) o.castShadow = true;
+  });
   return root;
 }
 
@@ -451,6 +480,8 @@ function makeSlime(colorHex) {
     group.add(pip);
     pips.push(pip);
   }
+
+  body.castShadow = true;
 
   group.userData = { body, pips, eyeGroups, antennaTip };
   return group;
@@ -720,6 +751,9 @@ function resolveAttackHit() {
         score += 1;
         scoreNum.textContent = String(score);
         gainXp(1);
+        bgMusic.playDefeat();
+      } else {
+        bgMusic.playHit();
       }
     }
   }
